@@ -2,7 +2,7 @@
 CC := gcc
 
 # Opções de compilação
-CFLAGS := -std=c11 -Wall
+CFLAGS := -std=c11 -Wall -g
 
 # Lista de arquivos .c a serem compilados
 SRCS := main.c
