@@ -46,12 +46,12 @@ void conversaComAmigos(int id) {
 
 Garcom* chamaGarcom() {
     int garcom = rand() % n_garcons;
-    while (garcons[garcom]->status != 1) {
-        garcom = rand() % n_garcons;
-    }
-    if (garcons[garcom] == NULL) {
+    if (fechado) {
         pthread_exit(NULL);
         return NULL;
+    }
+    while (garcons[garcom] == NULL || garcons[garcom]->status != 1) {
+        garcom = rand() % n_garcons;
     }
     sem_wait(&garcons[garcom]->semaforoStatus);
     return garcons[garcom];
@@ -170,8 +170,11 @@ void* garcomThread(void* arg) {
     Garcom* garcom = (Garcom*) arg;
     int rodada = 1;
 
-    while (rodada < total_rodadas) {
+    while (!fechado) {
         if (!inicializado) continue;
+        pthread_mutex_lock(&mutex_status);
+        garcom->status = 1;
+        pthread_mutex_unlock(&mutex_status);
         recebeMaximoPedidos(garcom);
         registraPedidos(garcom->id);
         entregaPedidos(garcom);
@@ -180,10 +183,6 @@ void* garcomThread(void* arg) {
         rodada++;
         finalizarRodada(rodada);
         sem_wait(&semaforo_rodada);
-
-        pthread_mutex_lock(&mutex_status);
-        garcom->status = 1;
-        pthread_mutex_unlock(&mutex_status);
     }
     pthread_exit(NULL);
     return NULL;
@@ -261,12 +260,16 @@ int main(int argc, char const *argv[])
         pthread_join(garcons[i]->thread, NULL);
         sem_destroy(&garcons[i]->semaforoStatus);
         sem_destroy(&garcons[i]->semaforoPedido);
+        printf("Garçom %d finalizou o expediente\n", i);
+        fflush(stdout);
         free(garcons[i]);
     }
 
     for (int i = 0; i < n_clientes; i++) {
         pthread_join(clientes[i]->thread, NULL);
         sem_destroy(&clientes[i]->semaforo);
+        printf("Cliente %d foi embora\n", i);
+        fflush(stdout);
         free(clientes[i]);
     }
 
