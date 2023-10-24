@@ -49,6 +49,10 @@ Garcom* chamaGarcom() {
     while (garcons[garcom]->status != 1) {
         garcom = rand() % n_garcons;
     }
+    if (garcons[garcom] == NULL) {
+        pthread_exit(NULL);
+        return NULL;
+    }
     sem_wait(&garcons[garcom]->semaforoStatus);
     return garcons[garcom];
 }
@@ -157,9 +161,7 @@ void finalizarRodada(int rodada) {
             printf("Rodada %d\n", rodada);
             printf("-------------------------------------------------------------\n\n");
         } else {
-            printf("Bar fechado\n");
             fechado = 1;
-            fflush(stdout);
         }
     }
 }
@@ -267,6 +269,9 @@ int main(int argc, char const *argv[])
         sem_destroy(&clientes[i]->semaforo);
         free(clientes[i]);
     }
+
+    printf("Bar fechado\n");
+    fflush(stdout);
 
     return 0;
 }
