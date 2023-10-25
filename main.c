@@ -8,6 +8,9 @@
 typedef struct Cliente {
     int id;
     pthread_t thread;
+    int n_garcons;
+    int max_conversa;
+    int max_consumo;
     sem_t aguardandoPedido;
 } Cliente;
 
@@ -16,20 +19,18 @@ typedef struct Garcom {
     pthread_t thread;
     sem_t disponivel;
     sem_t indisponivel;
+    int n_garcons;
+    int clientes_por_garcom;
+    int total_rodadas;
     int status;
     int pedidos_na_fila;
     Cliente** fila_pedidos;
 } Garcom;
 
-int n_garcons;
-int clientes_por_garcom;
-int total_rodadas;
-int max_conversa;
-int max_consumo;
-int fechado = 0;
 
 Garcom** garcons = NULL;
 
+int fechado = 0;
 int inicializado = 0;
 int garcons_finalizados = 0;
 pthread_mutex_t mutex_rodada = PTHREAD_MUTEX_INITIALIZER;
@@ -37,20 +38,20 @@ sem_t semaforo_rodada;
 pthread_mutex_t mutex_status = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_bar_fechado = PTHREAD_MUTEX_INITIALIZER;
 
-void conversaComAmigos(int id) {
+void conversaComAmigos(Cliente* cliente) {
+    int id = cliente->id;
     printf("Cliente %d está conversando com os amigos\n", id);
     fflush(stdout);
-    sleep(rand() % max_conversa);
+    sleep(rand() % cliente->max_conversa);
     printf("Cliente %d terminou de conversar com os amigos\n", id);
     fflush(stdout);
 }
 
-Garcom* chamaGarcom() {
-    int garcom = rand() % n_garcons;
+Garcom* chamaGarcom(int n_garcons) {
     if (fechado) {
         pthread_exit(NULL);
-        return NULL;
     }
+    int garcom = rand() % n_garcons;
     while (garcons[garcom] == NULL || garcons[garcom]->status != 1) {
         garcom = rand() % n_garcons;
         if (fechado) {
@@ -61,29 +62,33 @@ Garcom* chamaGarcom() {
     return garcons[garcom];
 }
 
-void fazPedido(int id, Cliente* cliente) {
-    Garcom* garcom = chamaGarcom();
+void fazPedido(Cliente* cliente) {
+    int id = cliente->id;
+    Garcom* garcom = chamaGarcom(cliente->n_garcons);
     garcom->fila_pedidos[garcom->pedidos_na_fila] = cliente;
     printf("Cliente %d fez pedido para garçom %d\n", id, garcom->id);
     fflush(stdout);
     sem_post(&garcom->indisponivel);
 }
 
-void esperaPedido(int id, Cliente* cliente) {
+void esperaPedido(Cliente* cliente) {
+    int id = cliente->id;
     printf("Cliente %d está esperando o pedido\n", id);
     fflush(stdout);
     sem_wait(&cliente->aguardandoPedido);
 }
 
-void recebePedido(int id) {
+void recebePedido(Cliente* cliente) {
+    int id = cliente->id;
     printf("Cliente %d recebeu o pedido\n", id);
     fflush(stdout);
 }
 
-void consomePedido(int id) {
+void consomePedido(Cliente* cliente) {
+    int id = cliente->id;
     printf("Cliente %d está consumindo o pedido\n", id);
     fflush(stdout);
-    sleep(rand() % max_consumo);
+    sleep(rand() % cliente->max_consumo);
     printf("Cliente %d terminou de consumir o pedido\n", id);
     fflush(stdout);
 }
@@ -92,22 +97,28 @@ void* clienteThread(void* arg) {
     Cliente* cliente = (Cliente*) arg;
     int id = cliente->id;
 
+    printf("Cliente %d chegou no bar\n", id);
+    fflush(stdout);
+
     while (!fechado) {
         if (!inicializado) continue;
-        conversaComAmigos(id);
-        fazPedido(id, cliente);
-        esperaPedido(id, cliente);
-        recebePedido(id);
-        consomePedido(id);
+        conversaComAmigos(cliente);
+        fazPedido(cliente);
+        esperaPedido(cliente);
+        recebePedido(cliente);
+        consomePedido(cliente);
     }
     pthread_exit(NULL);
-    return NULL;
 }
 
 void recebeMaximoPedidos(Garcom* garcom) {
     int id  = garcom->id;
+    int clientes_por_garcom = garcom->clientes_por_garcom;
     printf("Garçom %d agora pode receber pedidos\n", id);
     fflush(stdout);
+    pthread_mutex_lock(&mutex_status);
+    garcom->status = 1;
+    pthread_mutex_unlock(&mutex_status);
     for (int i = 0; i < clientes_por_garcom; i++) {
         printf("Garçom %d está esperando um pedido\n", id);
         fflush(stdout);
@@ -134,9 +145,9 @@ void registraPedidos(int id) {
 void entregaPedidos(Garcom* garcom) {
     int id = garcom->id;
     int pedidos_na_fila = garcom->pedidos_na_fila;
-    Cliente** fila = garcom->fila_pedidos;
     for (int i = 0; i < pedidos_na_fila; i++) {
-        Cliente* cliente_atual = fila[i];
+        Cliente* cliente_atual = garcom->fila_pedidos[i];
+        printf("Cliente pointer %p\n", cliente_atual);
         sem_post(&cliente_atual->aguardandoPedido);
         garcom->fila_pedidos[i] = NULL;
         printf("Garçom %d entregou o pedido para o cliente %d\n", id, cliente_atual->id);
@@ -147,10 +158,18 @@ void entregaPedidos(Garcom* garcom) {
     fflush(stdout);
 }
 
-void finalizarRodada(int rodada) {
+void finalizarRodada(Garcom* garcom, int rodada) {
+    printf("\nGarçom %d terminou a rodada %d\n\n", garcom->id, rodada);
+    fflush(stdout);
+    rodada++;
+
     pthread_mutex_lock(&mutex_rodada);
     garcons_finalizados++;
     pthread_mutex_unlock(&mutex_rodada);
+    
+    int n_garcons = garcom->n_garcons;
+    int total_rodadas = garcom->total_rodadas;
+
     if (garcons_finalizados == n_garcons) {
         garcons_finalizados = 0;
         if (rodada <= total_rodadas) {
@@ -167,6 +186,10 @@ void finalizarRodada(int rodada) {
             sem_post(&semaforo_rodada);
         }
     }
+
+    printf("Garçom %d não pode receber pedidos\n", garcom->id);
+    fflush(stdout);
+    sem_wait(&semaforo_rodada);
 }
 
 void* garcomThread(void* arg) {
@@ -178,22 +201,12 @@ void* garcomThread(void* arg) {
 
     while (!fechado) {
         if (!inicializado) continue;
-        pthread_mutex_lock(&mutex_status);
-        garcom->status = 1;
-        pthread_mutex_unlock(&mutex_status);
         recebeMaximoPedidos(garcom);
         registraPedidos(garcom->id);
         entregaPedidos(garcom);
-        printf("\nGarçom %d terminou a rodada %d\n\n", garcom->id, rodada);
-        fflush(stdout);
-        rodada++;
-        finalizarRodada(rodada);
-        printf("Garçom %d não pode receber pedidos\n", garcom->id);
-        fflush(stdout);
-        sem_wait(&semaforo_rodada);
+        finalizarRodada(garcom, rodada);
     }
     pthread_exit(NULL);
-    return NULL;
 }
 
 int tratarEntrada(const char* entrada) {
@@ -221,19 +234,19 @@ int main(int argc, char const *argv[])
     int n_clientes = tratarEntrada(argv[1]);
     printf("Número de clientes: %d\n", n_clientes);
     fflush(stdout);
-    n_garcons = tratarEntrada(argv[2]);
+    int n_garcons = tratarEntrada(argv[2]);
     printf("Número de garçons: %d\n", n_garcons);
     fflush(stdout);
-    clientes_por_garcom = tratarEntrada(argv[3]);
+    int clientes_por_garcom = tratarEntrada(argv[3]);
     printf("Máximo de clientes por garçom: %d\n", clientes_por_garcom);
     fflush(stdout);
-    total_rodadas = tratarEntrada(argv[4]);
+    int total_rodadas = tratarEntrada(argv[4]);
     printf("Quantidade de rodadas: %d\n", total_rodadas);
     fflush(stdout);
-    max_conversa = tratarEntrada(argv[5]);
+    int max_conversa = tratarEntrada(argv[5]);
     printf("Tempo máximo de conversa: %d\n", max_conversa);
     fflush(stdout);
-    max_consumo = tratarEntrada(argv[6]);
+    int max_consumo = tratarEntrada(argv[6]);
     printf("Tempo máximo de consumo: %d\n\n", max_consumo);
     fflush(stdout);
 
@@ -255,7 +268,7 @@ int main(int argc, char const *argv[])
         Garcom* garcom = (Garcom*) malloc(sizeof(Garcom));
 
         garcom->id = i;
-        garcom->status = 1;
+        garcom->status = 1;     // pronto para receber pedidos
         garcom->pedidos_na_fila = 0;
         garcom->fila_pedidos = (Cliente**) malloc(sizeof(Cliente) * clientes_por_garcom);
 
@@ -263,6 +276,9 @@ int main(int argc, char const *argv[])
             garcom->fila_pedidos[j] = NULL;
         }
 
+        garcom->n_garcons = n_garcons;
+        garcom->clientes_por_garcom = clientes_por_garcom;
+        garcom->total_rodadas = total_rodadas;
         garcons[i] = garcom;
 
         sem_init(&garcom->disponivel, 0, clientes_por_garcom);
@@ -275,6 +291,9 @@ int main(int argc, char const *argv[])
         Cliente* cliente = (Cliente*) malloc(sizeof(Cliente));
 
         cliente->id = i;
+        cliente->n_garcons = n_garcons;
+        cliente->max_conversa = max_conversa;
+        cliente->max_consumo = max_consumo;
         clientes[i] = cliente;
 
         sem_init(&cliente->aguardandoPedido, 0, 0);
