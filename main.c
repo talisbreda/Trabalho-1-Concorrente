@@ -159,9 +159,8 @@ void entregaPedidos(Garcom* garcom) {
 }
 
 void finalizarRodada(Garcom* garcom, int rodada) {
-    printf("\nGarçom %d terminou a rodada %d\n\n", garcom->id, rodada);
+    printf("\nGarçom %d terminou a rodada %d\n\n", garcom->id, rodada-1);
     fflush(stdout);
-    rodada++;
 
     pthread_mutex_lock(&mutex_rodada);
     garcons_finalizados++;
@@ -204,6 +203,7 @@ void* garcomThread(void* arg) {
         recebeMaximoPedidos(garcom);
         registraPedidos(garcom->id);
         entregaPedidos(garcom);
+        rodada++;
         finalizarRodada(garcom, rodada);
     }
     pthread_exit(NULL);
