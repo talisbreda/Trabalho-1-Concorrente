@@ -2,7 +2,7 @@
 CC := gcc
 
 # Opções de compilação
-CFLAGS := -std=c11 -Wall -g
+CFLAGS := -std=c11 -Wall -g -pthread -D_POSIX_C_SOURCE=200809L -O0 -I. -fsanitize=address -fsanitize=undefined -Werror -o -c
 
 # Lista de arquivos .c a serem compilados
 SRCS := main.c
