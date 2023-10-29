@@ -22,6 +22,8 @@ typedef struct Garcom {
     sem_t pedidoRealizado;
     pthread_mutex_t mutex_fila;
     pthread_mutex_t mutex_status;
+    pthread_mutex_t mutex_aguardando_atendimento;
+    int max_conversa;
     int n_garcons;
     int clientes_por_garcom;
     int total_rodadas;
@@ -59,30 +61,36 @@ void conversaComAmigos(Cliente* cliente) {
     printText("Cliente %d terminou de conversar com os amigos\n", id);
 }
 
+void setStatus(Garcom* garcom, int status) {
+    pthread_mutex_lock(&garcom->mutex_status);
+    garcom->status = status;
+    pthread_mutex_unlock(&garcom->mutex_status);
+}
+
 Garcom* chamaGarcom(Cliente* cliente) {
     int id = cliente->id;
     int n_garcons = cliente->n_garcons;
     printText("Cliente %d está chamando um garçom\n", id);
 
-    /*Escolhe um número aleatório de 0 a n_garcons-1 e checa se aquele
-    garçom está disponível (status == 1)*/
     Garcom* garcomEscolhido = NULL;
     do {
         int garcom = rand() % n_garcons;
         garcomEscolhido = garcons[garcom];
         pthread_mutex_lock(&garcomEscolhido->mutex_status);
-        sleep(1);
         printText("Cliente %d chamou o garçom %d\n", id, garcom);
         printText("(Cliente %d) Garçom %d está %s\n", id, garcom, garcomEscolhido->status == 1 ? "disponível" : "indisponível");
         if (fechado) {
             printText("Cliente %d foi embora pois não há mais garçons\n", id);
+            pthread_mutex_unlock(&garcomEscolhido->mutex_status);
             pthread_exit(NULL);
         }
-        if (sem_trywait(&garcomEscolhido->disponivel) == 1) {
-            printText("Cliente %d vai esperar o garçom %d ficar disponível\n", id, garcom);
-            sem_wait(&garcomEscolhido->disponivel); 
+        if (garcomEscolhido->status == 0) {
+            pthread_mutex_unlock(&garcomEscolhido->mutex_status);
+            continue;
         }
+        garcomEscolhido->clientes_aguardando_atendimento++;
         pthread_mutex_unlock(&garcomEscolhido->mutex_status);
+        sem_wait(&garcomEscolhido->disponivel); 
     } while (garcomEscolhido->status != 1);
 
     return garcomEscolhido;
@@ -111,6 +119,17 @@ void fazPedido(Cliente* cliente) {
     fflush(stdout);
 
     pthread_mutex_lock(&garcom->mutex_fila);
+    if (fechado) {
+        printText("Cliente %d foi embora pois não há mais garçons\n", id_cliente);
+        pthread_mutex_unlock(&garcom->mutex_fila);
+        pthread_exit(NULL);
+    }
+    // No raro caso onde a thread entra aqui mas o garçom já está com o máximo de pedidos
+    // o cliente começa o processo de fazer o pedido novamente
+    if (garcom->pedidos_na_fila == garcom->clientes_por_garcom) {
+        pthread_mutex_unlock(&garcom->mutex_fila);
+        return fazPedido(cliente);
+    }
     garcom->fila_pedidos[garcom->pedidos_na_fila] = cliente;
     garcom->pedidos_na_fila++;
     printFilaDePedidosDo(garcom, id_cliente);   
@@ -155,30 +174,57 @@ void* clienteThread(void* arg) {
     pthread_exit(NULL);
 }
 
+void removeClienteDaFilaDeEspera(Garcom* garcom) {
+    pthread_mutex_lock(&garcom->mutex_aguardando_atendimento);
+    garcom->clientes_aguardando_atendimento--;
+    pthread_mutex_unlock(&garcom->mutex_aguardando_atendimento);
+}
+
+int garcomAguardaPedido(Garcom* garcom) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    // aguarda um segundo a mais que o tempo de conversa
+    ts.tv_sec += garcom->max_conversa+1;
+    if (sem_timedwait(&garcom->pedidoRealizado, &ts)) {
+        // se nenhum pedido for feito, significa que não há mais clientes querendo fazer pedidos
+        printText("Garçom %d não recebeu um pedido\n", garcom->id);
+        return 0;
+    }
+    return 1;
+}
+
 void recebeMaximoPedidos(Garcom* garcom) {
     int id_garcom  = garcom->id;
     int clientes_por_garcom = garcom->clientes_por_garcom;
 
     printText("Garçom %d agora pode receber pedidos\n", id_garcom);
 
-    pthread_mutex_lock(&garcom->mutex_status);
-    garcom->status = 1;
-    pthread_mutex_unlock(&garcom->mutex_status);
+    setStatus(garcom, 1);
+
+    int recebeuMaximoPedidos = 1;
 
     for (int i = 0; i < clientes_por_garcom; i++) {
         printText("Garçom %d está esperando um pedido\n", id_garcom);
         sem_post(&garcom->disponivel);
-        sem_wait(&garcom->pedidoRealizado);
-        
+        /*
+        Se o garçom não recebeu um pedido por um certo período de tempo, 
+        não há mais clientes tentando fazer pedidos
+        */
+        if (!garcomAguardaPedido(garcom)) {
+            recebeuMaximoPedidos = 0;
+            break;
+        };
+        removeClienteDaFilaDeEspera(garcom);
         printText("Garçom %d recebeu um pedido\n", id_garcom);
     }
 
-    pthread_mutex_lock(&garcom->mutex_status);
-    garcom->status = 0;
-    pthread_mutex_unlock(&garcom->mutex_status);
+    setStatus(garcom, 0);
 
-    
-    printText("Garçom %d recebeu o máximo de pedidos\n", id_garcom);
+    if (recebeuMaximoPedidos) {
+        printText("Garçom %d recebeu o máximo de pedidos\n", id_garcom);
+    } else {
+        printText("Garçom %d não recebeu o máximo de pedidos pois não há mais clientes querendo pedir\n", id_garcom);
+    }
 }
 
 void registraPedidos(Garcom* garcom) {
@@ -228,8 +274,18 @@ void fechaBar() {
     printText("\nTodos os garçons finalizaram o expediente. Não é possível fazer mais pedidos.\n\n");
 }
 
+void liberaClientesDaFilaDeEspera(Garcom* garcom) {
+    pthread_mutex_lock(&garcom->mutex_aguardando_atendimento);
+    for (int i = 0; i < garcom->clientes_aguardando_atendimento; i++) {
+        sem_post(&garcom->disponivel);
+    }
+    garcom->clientes_aguardando_atendimento = 0;
+    pthread_mutex_unlock(&garcom->mutex_aguardando_atendimento);
+}
+
 void finalizarRodada(Garcom* garcom, int rodada) {
     printTerminoDeRodada(garcom, rodada);
+    liberaClientesDaFilaDeEspera(garcom);
 
     pthread_mutex_lock(&mutex_rodada);
     garcons_finalizados++;
@@ -343,6 +399,7 @@ int main(int argc, char const *argv[])
         garcom->n_garcons = n_garcons;
         garcom->clientes_por_garcom = clientes_por_garcom;
         garcom->total_rodadas = total_rodadas;
+        garcom->max_conversa = max_conversa;
         garcons[i] = garcom;
 
         sem_init(&garcom->disponivel, 0, 0);
