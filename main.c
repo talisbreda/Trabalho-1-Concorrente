@@ -369,7 +369,6 @@ int tratarEntrada(const char* entrada) {
     long int num = strtol(entrada, &endptr, 10);
 
     if ((*endptr != '\0') || num <= 0) {
-        free(endptr);
         printText("Favor inserir apenas números inteiros positivos.\n");
         exit(1);
     }
@@ -401,23 +400,18 @@ int main(int argc, char const *argv[])
     StatusBar* bar = inicializaBar();
 
     bar->n_clientes = tratarEntrada(argv[1]);
-    printf("Número de clientes: %d\n", bar->n_clientes);
-    fflush(stdout);
     bar->n_garcons = tratarEntrada(argv[2]);
-    printf("Número de garçons: %d\n", bar->n_garcons);
-    fflush(stdout);
     bar->clientes_por_garcom = tratarEntrada(argv[3]);
-    printf("Máximo de clientes por garçom: %d\n", bar->clientes_por_garcom);
-    fflush(stdout);
     bar->total_rodadas = tratarEntrada(argv[4]);
-    printf("Quantidade de rodadas: %d\n", bar->total_rodadas);
-    fflush(stdout);
     bar->max_conversa = tratarEntrada(argv[5]);
-    printf("Tempo máximo de conversa: %d\n", bar->max_conversa);
-    fflush(stdout);
     bar->max_consumo = tratarEntrada(argv[6]);
+    
+    printf("Número de clientes: %d\n", bar->n_clientes);
+    printf("Número de garçons: %d\n", bar->n_garcons);
+    printf("Máximo de clientes por garçom: %d\n", bar->clientes_por_garcom);
+    printf("Quantidade de rodadas: %d\n", bar->total_rodadas);
+    printf("Tempo máximo de conversa: %d\n", bar->max_conversa);
     printf("Tempo máximo de consumo: %d\n\n", bar->max_consumo);
-    fflush(stdout);
 
     Garcom** garcons = (Garcom**) malloc(sizeof(Garcom) * bar->n_garcons);
     ArgThreadGarcom** garcons_args = (ArgThreadGarcom**) malloc(sizeof(ArgThreadGarcom) * bar->n_garcons);
