@@ -91,7 +91,7 @@ Garcom* chamaGarcom(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
         printText("Cliente %d chamou o garçom %d\n", id, garcom);
         printText("(Cliente %d) Garçom %d está %s\n", id, garcom, garcomEscolhido->status == 1 ? "disponível" : "indisponível");
         if (bar->fechado) {
-            printText("Cliente %d foi embora pois não há mais garçons\n", id);
+            printText("Cliente %d foi embora pois o bar fechou\n", id);
             pthread_mutex_unlock(&garcomEscolhido->mutex_status);
             pthread_exit(NULL);
         }
@@ -142,16 +142,14 @@ void fazPedido(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
     printText("Cliente %d está fazendo o pedido para o garçom %d\n", id_cliente, garcom->id);
     fflush(stdout);
 
-    // pthread_mutex_lock(&garcom->mutex_fila);
     if (bar->fechado) {
-        printText("Cliente %d foi embora pois não há mais garçons\n", id_cliente);
-        // pthread_mutex_unlock(&garcom->mutex_fila);
+        printText("Cliente %d foi embora pois o bar fechou\n", id_cliente);
         pthread_exit(NULL);
     }
+
     // No raro caso onde a thread entra aqui mas o garçom já está com o máximo de pedidos
     // o cliente começa o processo de fazer o pedido novamente
     if (garcom->pedidos_na_fila == bar->clientes_por_garcom) {
-        // pthread_mutex_unlock(&garcom->mutex_fila);
         return fazPedido(bar, cliente, garcons);
     }
     colocaPedidoNaFilaDoGarcom(garcom, cliente);   
@@ -391,12 +389,12 @@ StatusBar* inicializaBar() {
 
 int main(int argc, char const *argv[])
 {
-    printText("Iniciando bar\n");
-
     if (argc != 7) {
         printf("Uso: ./bar <n_clientes> <n_garcons> <clientes_por_garcom> <total_rodadas> <max_conversa> <max_consumo>\n");
         return 0;
     } 
+
+    printText("Iniciando bar\n");
     StatusBar* bar = inicializaBar();
 
     bar->n_clientes = tratarEntrada(argv[1]);
