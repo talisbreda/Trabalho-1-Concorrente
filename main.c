@@ -65,10 +65,25 @@ void printText(const char* format, ...) {
     va_end(args);
 }
 
+void espera(int tempo_maximo) {
+    // Método para esperar um tempo aleatório entre 0 e tempo_maximo
+
+    // Gera um número aleatório e limita a tempo_maximo*1000 para transformar em milisegunds
+    int tempo_aleatorio_em_ms = rand() % (tempo_maximo*1000);
+    struct timespec req;
+    req.tv_sec = tempo_aleatorio_em_ms / 1000;              // tempo base em segundos
+    req.tv_nsec = (long)tempo_aleatorio_em_ms * 100000;     // tempo adicional em milisegundos
+
+    // tv_nsec só suporta valores até 999999999ns (999ms), por esse motivo tv_sec é usado também
+
+    // O método nanosleep espera o tempo de tv_sec + tv_nsec
+    nanosleep(&req, NULL);
+}
+
 void conversaComAmigos(StatusBar* bar, Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d está conversando com os amigos\n", id);
-    sleep(rand() % bar->max_conversa);
+    espera(bar->max_conversa);
     printText("Cliente %d terminou de conversar com os amigos\n", id);
 }
 
@@ -174,7 +189,8 @@ void recebePedido(Cliente* cliente) {
 void consomePedido(StatusBar* bar, Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d está consumindo o pedido\n", id);
-    sleep(rand() % bar->max_consumo);
+    // sleep(rand() % bar->max_consumo);
+    espera(bar->max_consumo);
     printText("Cliente %d terminou de consumir o pedido\n", id);
 }
 
