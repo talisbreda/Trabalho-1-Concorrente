@@ -6,17 +6,20 @@
 #include <time.h>
 #include <stdarg.h>
 
-// Essa estrutura representa o cliente que vai frequentar o bar
-// Ela armzena informações como o ID, thread e o semaforo
+/*
+Essa estrutura representa o cliente que vai frequentar o bar
+Ela armzena informações como o ID, thread e o semaforo
+*/
 typedef struct Cliente {
     int id;
     pthread_t thread;
     sem_t aguardandoPedido;
 } Cliente;
 
-// Essa estrutura representa o garcom que vai servir os clientes
-// Ela armazena informações como o ID, thread, semaforo, mutex, o status do garcom
-// Quantos pedidos estão na fila e o os clientes que estão aguardando serem atendidos
+/*Essa estrutura representa o garcom que vai servir os clientes
+Ela armazena informações como o ID, thread, semaforo, mutex, o status do garcom
+Quantos pedidos estão na fila e o os clientes que estão aguardando serem atendidos
+*/
 typedef struct Garcom {
     int id;
     pthread_t thread;
@@ -62,16 +65,20 @@ typedef struct ArgThreadGarcom {
     StatusBar* bar;
 } ArgThreadGarcom;
 
-// Criamos os mutexes que vão servir para controlar o acesso a memória
+// Mutex para controlar a impressão de mensagens na saída padrão
 pthread_mutex_t mutex_print;
 
-// Esta funcao serve para imprimir mensagens na saida padrao usando um mutex 
-// para evitar que as threads fiquem escrevendo uma sobre a outra.
+/*
+Esta função serve para imprimir mensagens na saida padrao usando um mutex 
+para evitar que as threads fiquem escrevendo uma sobre a outra.
+*/
 void printText(const char* format, ...) {
     va_list args;
     va_start(args, format);
+    pthread_mutex_lock(&mutex_print);
     vprintf(format, args);
     fflush(stdout);
+    pthread_mutex_unlock(&mutex_print);
     va_end(args);
 }
 
@@ -90,8 +97,10 @@ void espera(int tempo_maximo) {
     nanosleep(&req, NULL);
 }
 
-// Esta funcao simula o comportamento de um cliente quando ele estiver conversando com um amigo no bar
-// Ele passa um quantidade de tempo randomica conversando para entao fazer o pedido
+/*
+Esta função simula o comportamento de um cliente quando ele estiver conversando com um amigo no bar
+Ele passa um quantidade de tempo randomica conversando para entao fazer o pedido
+*/
 void conversaComAmigos(StatusBar* bar, Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d está conversando com os amigos\n", id);
@@ -99,18 +108,22 @@ void conversaComAmigos(StatusBar* bar, Cliente* cliente) {
     printText("Cliente %d terminou de conversar com os amigos\n", id);
 }
 
-// Ela define se um garcom qualquer esta disponivel ou nao. Ela usa um mutex para controlar o acesso
-// Se o garcom estiver ocupado ele esta lockado, caso contrario esta disponivel para pegar pedidos
+/*
+Ela define se um garcom qualquer esta disponivel ou nao. Ela usa um mutex para controlar o acesso
+Se o garcom estiver ocupado ele esta lockado, caso contrario esta disponivel para pegar pedidos
+*/
 void setStatus(Garcom* garcom, int status) {
     pthread_mutex_lock(&garcom->mutex_status);
     garcom->status = status;
     pthread_mutex_unlock(&garcom->mutex_status);
 }
 
-// Esta funcao simula um cliente chamando um garcom. O cliente vai checar se o garcom esta disponivel
-// Caso tenha algum garcom disponivel, ele ira chamar o garcom
-// Caso nao houver garcom disponivel, ele ira esperar ate um garcom estiver disponivel
-// E caso o bar estiver fechado, ele vai embora
+/*
+Esta função simula um cliente chamando um garcom. O cliente vai checar se o garcom esta disponivel
+Caso tenha algum garcom disponivel, ele ira chamar o garcom
+Caso nao houver garcom disponivel, ele ira esperar ate um garcom estiver disponivel
+E caso o bar estiver fechado, ele vai embora
+*/
 Garcom* chamaGarcom(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
     int id = cliente->id;
     int n_garcons = bar->n_garcons;
@@ -140,8 +153,10 @@ Garcom* chamaGarcom(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
     return garcomEscolhido;
 }
 
-// Essa funcao serve para imprimir a fila de pedidos de um garcom
-// Ela basicamente vai imprimir quais clientes ja fizeram pedidos para os garcons
+/*
+Essa função serve para imprimir a fila de pedidos de um garcom
+Ela basicamente vai imprimir quais clientes ja fizeram pedidos para os garcons
+*/
 void printFilaDePedidosDo(StatusBar* bar, Garcom* garcom, int id_cliente) {
     pthread_mutex_lock(&mutex_print);
     printf("\nCliente %d fez pedido para garçom %d\n", id_cliente, garcom->id);
@@ -158,16 +173,18 @@ void printFilaDePedidosDo(StatusBar* bar, Garcom* garcom, int id_cliente) {
     pthread_mutex_unlock(&mutex_print);
 }
 
-// Incrementa o numero total de pedidos na fila
-// Usa um mutex para garantir a exclusao mutua
+/*
+Incrementa o numero total de pedidos na fila
+Usa um mutex para garantir a exclusao mutua
+*/
 void adicionaPedidoAoTotal(StatusBar* bar) {
     pthread_mutex_lock(&bar->mutex_pedidos_totais_na_fila);
     bar->pedidos_totais_na_fila++;
     pthread_mutex_unlock(&bar->mutex_pedidos_totais_na_fila);
 }
 
-// Adiciona um pedido do cliente na fila de pedidos do garcom
-// Usa um mutex para garantir que a fila seja acessada corretamente
+/*Adiciona um pedido do cliente na fila de pedidos do garcom
+Usa um mutex para garantir que a fila seja acessada corretamente*/
 void colocaPedidoNaFilaDoGarcom(Garcom* garcom, Cliente* cliente) {
     pthread_mutex_lock(&garcom->mutex_fila);
     garcom->fila_pedidos[garcom->pedidos_na_fila] = cliente;
@@ -175,9 +192,9 @@ void colocaPedidoNaFilaDoGarcom(Garcom* garcom, Cliente* cliente) {
     pthread_mutex_unlock(&garcom->mutex_fila);
 }
 
-// Esta funcao simula um cliente fazendo um pedido para um garcom
-// Caso o garcom esteja ocupado ou a fila estiver cheia, ele vai tentar novamente ate que o pedido seja anotado
-// Esse pedido vai ser adicionado na fila do garcom
+/*Esta função simula um cliente fazendo um pedido para um garcom
+Caso o garcom esteja ocupado ou a fila estiver cheia, ele vai tentar novamente ate que o pedido seja anotado
+Esse pedido vai ser adicionado na fila do garcom*/
 void fazPedido(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
     int id_cliente = cliente->id;
     Garcom* garcom = chamaGarcom(bar, cliente, garcons);
@@ -189,8 +206,8 @@ void fazPedido(StatusBar* bar, Cliente* cliente, Garcom** garcons) {
         pthread_exit(NULL);
     }
 
-    // No raro caso onde a thread entra aqui mas o garçom já está com o máximo de pedidos
-    // o cliente começa o processo de fazer o pedido novamente
+    /*No raro caso onde a thread entra aqui mas o garçom já está com o máximo de pedidos
+    o cliente começa o processo de fazer o pedido novamente*/
     if (garcom->pedidos_na_fila == bar->clientes_por_garcom) {
         return fazPedido(bar, cliente, garcons);
     }
@@ -214,8 +231,10 @@ void recebePedido(Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d recebeu o pedido\n", id);
 }
-// Ela vai simular o cliente consumindo o pedido
-// Que leva uma quantidade de tempo randomica, com limite superior estando no input do usuario
+/*
+Ela vai simular o cliente consumindo o pedido
+Que leva uma quantidade de tempo randomica, com limite superior estando no input do usuario
+*/
 void consomePedido(StatusBar* bar, Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d está consumindo o pedido\n", id);
@@ -224,10 +243,12 @@ void consomePedido(StatusBar* bar, Cliente* cliente) {
     printText("Cliente %d terminou de consumir o pedido\n", id);
 }
 
-// Esta e a funcao principal quando o assunto e o comportamento do cliente
-// Ela vai controlar o comportamento dele quando ele chegar no bar, conversar com os amigos
-// fazer pedido, etc
-// Ela vai continuar simulando o comportamento do cliente ate o bar fechar
+/*
+Esta e a função principal quando o assunto e o comportamento do cliente
+Ela vai controlar o comportamento dele quando ele chegar no bar, conversar com os amigos
+fazer pedido, etc
+Ela vai continuar simulando o comportamento do cliente ate o bar fechar
+*/
 void* clienteThread(void* arg) {
     ArgThreadCliente* argCliente = (ArgThreadCliente*) arg;
     Cliente* cliente = argCliente->cliente;
@@ -270,8 +291,10 @@ int garcomAguardaPedido(StatusBar* bar, Garcom* garcom) {
     return 1;
 }
 
-// Esta funcao serve para ver se o garcom ja chegou no limite de pedidos que ele pode receber
-// Caso ele tenha recebido a quantidade maxima de pedidos ele vai imprimir que o garcom ja recebeu o seu limite
+/*
+Esta função serve para ver se o garcom ja chegou no limite de pedidos que ele pode receber
+Caso ele tenha recebido a quantidade maxima de pedidos ele vai imprimir que o garcom ja recebeu o seu limite
+*/
 void recebeMaximoPedidos(StatusBar* bar, Garcom* garcom) {
     int id_garcom  = garcom->id;
     int clientes_por_garcom = bar->clientes_por_garcom;
@@ -314,8 +337,10 @@ void registraPedidos(Garcom* garcom) {
     printText("Garçom %d está indo para a copa para registrar os pedidos\n", garcom->id);
 }
 
-// Ela vai notificar que o garcom entregou o pedido para o cliente que ele atendeu
-// E tambem notifica ao cliente que o pedido foi entregue
+/*
+Ela vai notificar que o garcom entregou o pedido para o cliente que ele atendeu
+E tambem notifica ao cliente que o pedido foi entregue
+*/
 void entregaPedidos(StatusBar* bar, Garcom* garcom) {
     int id = garcom->id;
     int pedidos_na_fila = garcom->pedidos_na_fila;
@@ -375,8 +400,10 @@ void liberaClientesDaFilaDeEspera(Garcom* garcom) {
     pthread_mutex_unlock(&garcom->mutex_aguardando_atendimento);
 }
 
-// Ela vai chamar as funcoes sobre rodada acima para finalizar uma rodada, liberar os clientes
-// E notifica as outras funcoes que a rodada terminou
+/*
+Ela vai chamar as funcoes sobre rodada acima para finalizar uma rodada, liberar os clientes
+E notifica as outras funcoes que a rodada terminou
+*/
 void finalizarRodada(StatusBar* bar, Garcom* garcom, int rodada) {
     printTerminoDeRodada(garcom, rodada);
     liberaClientesDaFilaDeEspera(garcom);
@@ -404,9 +431,10 @@ void finalizarRodada(StatusBar* bar, Garcom* garcom, int rodada) {
     sem_wait(&bar->semaforo_rodada);
 }
 
-// Esta e a funcao principal que vai tratar o comportamento dos garcons
-// Ela vai registrar que um garcom recebeu pedidos, entregou o pedido e que terminou uma rodada
-// Ela vai ficar rodando ate que seja notificada que o bar fechou
+/*Esta e a função principal que vai tratar o comportamento dos garcons
+Ela vai registrar que um garcom recebeu pedidos, entregou o pedido e que terminou uma rodada
+Ela vai ficar rodando ate que seja notificada que o bar fechou
+*/
 void* garcomThread(void* arg) {
     ArgThreadGarcom* argGarcom = (ArgThreadGarcom*) arg;
     Garcom* garcom = argGarcom->garcom;
@@ -427,8 +455,10 @@ void* garcomThread(void* arg) {
     pthread_exit(NULL);
 }
 
-// Esta funcao vai verificar se o argumento que foi dado pelo usuario foi um numero inteiro positivo
-// Caso o usuario colocou algum argumento diferente disso, o programa ira fechar imprimindo uma mensagem alertando ao usuario para so colocar numeros inteiros positivos
+/*
+Esta função vai verificar se o argumento que foi dado pelo usuario foi um numero inteiro positivo
+Caso o usuario colocou algum argumento diferente disso, o programa ira fechar imprimindo uma mensagem alertando ao usuario para so colocar numeros inteiros positivos
+*/
 int tratarEntrada(const char* entrada) {
     char *endptr;
 
@@ -441,8 +471,9 @@ int tratarEntrada(const char* entrada) {
     return num;
 }
 
-// Ela é responsável por alocar memória
-// Ela é usada para rastrear o estado geral do bar e coordena as operações das threads
+/*
+Essa função é responsável por alocar memória para o bar e inicializar os valores padrões
+*/
 StatusBar* inicializaBar() {
     StatusBar* bar = (StatusBar*) malloc(sizeof(StatusBar));
     bar->fechado = 0;
@@ -462,9 +493,11 @@ StatusBar* inicializaBar() {
 // A função main é a principal função do nosso programa
 int main(int argc, char const *argv[])
 {
-    // Aqui ela verifica os argumentos da linha de comando inserido pelo usuario
-    // Caso o numero de argumentos esteja incorreto ela vai printar uma mensagem de erro alertando
-    // ao usuario quais argumentos tem que ser dado pelo usuario
+    /*
+    Aqui ela verifica os argumentos da linha de comando inserido pelo usuario
+    Caso o numero de argumentos esteja incorreto ela vai printar uma mensagem de erro alertando
+    ao usuario quais argumentos tem que ser dado pelo usuario
+    */
     if (argc != 7) {
         printf("Uso: ./bar <n_clientes> <n_garcons> <clientes_por_garcom> <total_rodadas> <max_conversa> <max_consumo>\n");
         return 0;
@@ -546,8 +579,9 @@ int main(int argc, char const *argv[])
         sem_init(&cliente->aguardandoPedido, 0, 0);
         pthread_create(&cliente->thread, NULL, clienteThread, (void*) arg);
     }
-    // Aqui ele vai iniciar o bar, indicando para o programa que agora ela está pronta
-    // para receber os clientes
+    /*
+    Aqui é indicado que todas as threads foram inicializadas e que o programa pode iniciar
+    */
     bar->inicializado = 1;
 
     // Aqui ela libera os recursos que foram alocados pelos clientes
