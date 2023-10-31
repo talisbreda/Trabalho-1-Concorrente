@@ -34,6 +34,7 @@ typedef struct StatusBar {
     sem_t semaforo_rodada;
     pthread_mutex_t mutex_rodada;
     pthread_mutex_t mutex_bar_fechado;
+    pthread_mutex_t mutex_pedidos_totais_na_fila;
     int n_garcons;
     int n_clientes;
     int max_conversa;
@@ -52,31 +53,28 @@ typedef struct ArgThreadGarcom {
     StatusBar* bar;
 } ArgThreadGarcom;
 
-pthread_mutex_t mutex_pedidos_totais_na_fila;
 pthread_mutex_t mutex_print;
 
 void printText(const char* format, ...) {
     va_list args;
     va_start(args, format);
-    pthread_mutex_lock(&mutex_print);
     vprintf(format, args);
     fflush(stdout);
-    pthread_mutex_unlock(&mutex_print);
     va_end(args);
 }
 
 void espera(int tempo_maximo) {
     // Método para esperar um tempo aleatório entre 0 e tempo_maximo
 
-    // Gera um número aleatório e limita a tempo_maximo*1000 para transformar em milisegunds
+    // Gera um número aleatório e limita a tempo_maximo*1000 para transformar em milisegundos
     int tempo_aleatorio_em_ms = rand() % (tempo_maximo*1000);
     struct timespec req;
     req.tv_sec = tempo_aleatorio_em_ms / 1000;              // tempo base em segundos
     req.tv_nsec = (long)tempo_aleatorio_em_ms * 100000;     // tempo adicional em milisegundos
 
-    // tv_nsec só suporta valores até 999999999ns (999ms), por esse motivo tv_sec é usado também
+    // tv_nsec só suporta valores até 999999999ns (999ms), por esse motivo tv_sec é usado em conjunto
 
-    // O método nanosleep espera o tempo de tv_sec + tv_nsec
+    // O método nanosleep espera o tempo de tv_sec + tv_nsec de req
     nanosleep(&req, NULL);
 }
 
@@ -139,9 +137,9 @@ void printFilaDePedidosDo(StatusBar* bar, Garcom* garcom, int id_cliente) {
 }
 
 void adicionaPedidoAoTotal(StatusBar* bar) {
-    pthread_mutex_lock(&mutex_pedidos_totais_na_fila);
+    pthread_mutex_lock(&bar->mutex_pedidos_totais_na_fila);
     bar->pedidos_totais_na_fila++;
-    pthread_mutex_unlock(&mutex_pedidos_totais_na_fila);
+    pthread_mutex_unlock(&bar->mutex_pedidos_totais_na_fila);
 }
 
 void colocaPedidoNaFilaDoGarcom(Garcom* garcom, Cliente* cliente) {
@@ -286,9 +284,9 @@ void entregaPedidos(StatusBar* bar, Garcom* garcom) {
         Cliente* cliente_atual = garcom->fila_pedidos[i];
         sem_post(&cliente_atual->aguardandoPedido);
         garcom->fila_pedidos[i] = NULL;
-        pthread_mutex_lock(&mutex_pedidos_totais_na_fila);
+        pthread_mutex_lock(&bar->mutex_pedidos_totais_na_fila);
         bar->pedidos_totais_na_fila--;
-        pthread_mutex_unlock(&mutex_pedidos_totais_na_fila);
+        pthread_mutex_unlock(&bar->mutex_pedidos_totais_na_fila);
         printText("Garçom %d entregou o pedido para o cliente %d\n", id, cliente_atual->id);
     }
     pthread_mutex_unlock(&garcom->mutex_fila);
@@ -397,8 +395,10 @@ StatusBar* inicializaBar() {
     bar->pedidos_totais_na_fila = 0;
     bar->mutex_bar_fechado = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
     bar->mutex_rodada = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
+    bar->mutex_pedidos_totais_na_fila = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_init(&bar->mutex_bar_fechado, NULL);
     pthread_mutex_init(&bar->mutex_rodada, NULL);
+    pthread_mutex_init(&bar->mutex_pedidos_totais_na_fila, NULL);
     sem_init(&bar->semaforo_rodada, 0, 0);
     return bar;
 }
@@ -434,7 +434,6 @@ int main(int argc, char const *argv[])
     bar->garcons = garcons;
 
     srand(time(NULL));
-    pthread_mutex_init(&mutex_pedidos_totais_na_fila, NULL);
     pthread_mutex_init(&mutex_print, NULL);
 
     printf("=============================================================\n");
