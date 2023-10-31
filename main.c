@@ -238,7 +238,6 @@ Que leva uma quantidade de tempo randomica, com limite superior estando no input
 void consomePedido(StatusBar* bar, Cliente* cliente) {
     int id = cliente->id;
     printText("Cliente %d está consumindo o pedido\n", id);
-    // sleep(rand() % bar->max_consumo);
     espera(bar->max_consumo);
     printText("Cliente %d terminou de consumir o pedido\n", id);
 }
